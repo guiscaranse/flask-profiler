@@ -1,18 +1,53 @@
-import sqlite3
 import json
-from .base import BaseStorage
+import sqlite3
+import time
+import threading
 from datetime import datetime
 from timeit import default_timer
-import time
+
+from .base import BaseStorage
+
+
 # from time import perf_counter
 
 
 def formatDate(timestamp, dateFormat):
     return datetime.fromtimestamp(timestamp).strftime(dateFormat)
 
+lock = threading.Lock()
+
+class custom_cursor():
+    cursor = None
+
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def execute(self, sql):
+        try:
+            lock.acquire(True)
+            return self.cursor.execute(sql)
+        finally:
+            lock.release()
+
+    def fetchall(self):
+        try:
+            lock.acquire(True)
+            return self.cursor.fetchall()
+        finally:
+            lock.release()
+
+    @property
+    def rowcount(self):
+        try:
+            lock.acquire(True)
+            return self.cursor.rowcount
+        finally:
+            lock.release()
+
 
 class Sqlite(BaseStorage):
     """docstring for Sqlite"""
+
     def __init__(self, config=None):
         super(Sqlite, self).__init__()
         self.config = config
@@ -30,7 +65,7 @@ class Sqlite(BaseStorage):
 
         self.connection = sqlite3.connect(
             self.sqlite_file, check_same_thread=False)
-        self.cursor = self.connection.cursor()
+        self.cursor = custom_cursor(self.connection.cursor())
         try:
             self.create_database()
         except sqlite3.OperationalError as e:
@@ -78,16 +113,16 @@ class Sqlite(BaseStorage):
             {name} TEXT
             );
         '''.format(
-                table_name=self.table_name,
-                startedAt=self.startedAt_head,
-                endedAt=self.endedAt_head,
-                elapsed=self.elapsed_head,
-                args=self.args_head,
-                kwargs=self.kwargs_head,
-                method=self.method_head,
-                context=self.context_head,
-                name=self.name_head
-            )
+            table_name=self.table_name,
+            startedAt=self.startedAt_head,
+            endedAt=self.endedAt_head,
+            elapsed=self.elapsed_head,
+            args=self.args_head,
+            kwargs=self.kwargs_head,
+            method=self.method_head,
+            context=self.context_head,
+            name=self.name_head
+        )
         self.cursor.execute(sql)
 
         sql = """
@@ -118,14 +153,14 @@ class Sqlite(BaseStorage):
             null, ?, ?, ?, ?,?, ?, ?, ?)""".format(self.table_name)
 
         self.cursor.execute(sql, (
-                startedAt,
-                endedAt,
-                elapsed,
-                args,
-                kwargs,
-                method,
-                context,
-                name))
+            startedAt,
+            endedAt,
+            elapsed,
+            args,
+            kwargs,
+            method,
+            context,
+            name))
 
         self.connection.commit()
 
@@ -133,7 +168,7 @@ class Sqlite(BaseStorage):
         filters = Sqlite.getFilters(kwds)
 
         if kwds.get('interval', None) == "daily":
-            interval = 3600 * 24   # daily
+            interval = 3600 * 24  # daily
             dateFormat = '%Y-%m-%d'
         else:
             interval = 3600  # hourly
@@ -150,10 +185,10 @@ class Sqlite(BaseStorage):
             group by strftime("{dateFormat}", datetime(startedAt, 'unixepoch'))
             order by startedAt asc
             '''.format(
-                table_name=self.table_name,
-                dateFormat=dateFormat,
-                conditions=conditions
-                )
+            table_name=self.table_name,
+            dateFormat=dateFormat,
+            conditions=conditions
+        )
 
         self.cursor.execute(sql)
         rows = self.cursor.fetchall()
@@ -179,9 +214,9 @@ class Sqlite(BaseStorage):
             FROM "{table_name}" {conditions}
             group by method
             '''.format(
-                table_name=self.table_name,
-                conditions=conditions
-                )
+            table_name=self.table_name,
+            conditions=conditions
+        )
 
         self.cursor.execute(sql)
         rows = self.cursor.fetchall()
@@ -231,7 +266,7 @@ class Sqlite(BaseStorage):
             'SELECT * FROM "{table_name}" WHERE ID={measurementId}'.format(
                 table_name=self.table_name,
                 measurementId=measurementId
-                )
+            )
         )
         rows = self.cursor.fetchall()
         record = rows[0]
@@ -249,7 +284,7 @@ class Sqlite(BaseStorage):
             'DELETE FROM "{table_name}" WHERE ID={measurementId}'.format(
                 table_name=self.table_name,
                 measurementId=measurementId
-                )
+            )
         )
         return self.connection.commit()
 
@@ -295,11 +330,11 @@ class Sqlite(BaseStorage):
             group by method, name
             order by {sort_field} {sort_direction}
             '''.format(
-                table_name=self.table_name,
-                conditions=conditions,
-                sort_field=filters["sort"][0],
-                sort_direction=filters["sort"][1]
-                )
+            table_name=self.table_name,
+            conditions=conditions,
+            sort_field=filters["sort"][0],
+            sort_direction=filters["sort"][1]
+        )
 
         self.cursor.execute(sql)
         rows = self.cursor.fetchall()
