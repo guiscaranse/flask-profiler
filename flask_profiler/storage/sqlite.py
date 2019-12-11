@@ -22,10 +22,10 @@ class custom_cursor():
     def __init__(self, cursor):
         self.cursor = cursor
 
-    def execute(self, sql):
+    def execute(self, *args):
         try:
             lock.acquire(True)
-            return self.cursor.execute(sql)
+            return self.cursor.execute(*args)
         finally:
             lock.release()
 
